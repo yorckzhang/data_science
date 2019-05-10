@@ -1,0 +1,86 @@
+---
+title: "Coursera Practical Machine Learning - Excercise Prediction"
+author: "Yue Zhang"
+date: "May 9, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Objective
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+## Data
+The training data for this project are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+The test data are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+## Data Processing
+The data is downloaded via the URL. The following data treatment is carried out:
+<br /> (1) Values such as "NA", "#DIV/0!" or blank can be considered as missing, so there are set to NA. 
+<br /> (2) Many columns have high missing rates > 90%, they can't be used as meaningful predictors. They are removed from both the training and test datasets.
+<br /> (3) The data were collected using sensors on belt, arm, forearm and dumbbell, so any other variables will be irrelevant to predict the activity. These variables are dropped too. 
+<br /> (4) The variables have very different variances, so they are normalized to have mean=0 and variance=1.
+
+```{r}
+# load the data
+trainlink<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testlink<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training<-read.csv(url(trainlink), na.strings=c("NA","#DIV/0!",""))
+predict_cases<-read.csv(url(testlink), na.strings=c("NA","#DIV/0!",""))
+```
+
+```{r}
+a<-colSums(is.na(training))/nrow(training)
+training<-subset(training,select=-c(which(a>0.5)))
+predict_cases<-subset(predict_cases,select=-c(which(a>0.5)))
+```
+
+```{r}
+training<-subset(training,select=-c(X,user_name,raw_timestamp_part_1,raw_timestamp_part_2,cvtd_timestamp,new_window,num_window))
+predict_cases<-subset(predict_cases,select=-c(X,user_name,raw_timestamp_part_1,raw_timestamp_part_2,cvtd_timestamp,new_window,num_window))
+```
+
+```{r}
+N=ncol(training)
+for(i in 1:(ncol(training)-1)){
+  training[,i]=(training[,i]-mean(training[,i]))/sd(training[,i])
+  predict_cases[,i]=(predict_cases[,i]-mean(predict_cases[,i]))/sd(predict_cases[,i])
+}
+```
+
+## Modeling 
+In the following I am going to apply KNN and random forest to train the models, and compare the performance using accuracy. 10-fold cross validation was used.
+```{r}
+library(caret)
+inTrain=createDataPartition(y=training$classe,p=0.7,list=FALSE)
+training_data=training[inTrain,]
+test_data<-training[-inTrain,]
+rm(training)
+```
+
+#### Training the KNN classifier, the accuracy to predict the test data is 96.55%.  
+```{r}
+set.seed(12345)         # set the seeds to have reproducable results
+knn_ctrl<-trainControl(method="cv", number = 10, classProbs = TRUE)
+mknn <- train(classe ~ ., method = "knn", data=training_data, trControl = knn_ctrl)
+pred_knn <- predict(mknn,test_data)                       
+confusionMatrix(pred_knn,test_data$classe)                 # accuracy
+```
+
+#### Training the random forest classifier, the accuracy to predict the test data is 99.47%.  
+```{r}
+set.seed(12345)         # set the seeds to have reproducable results
+rf_ctrl<-trainControl(method="cv", number = 10, classProbs = TRUE)
+mrf = train(classe ~ ., method = "rf", data=training_data, trControl = rf_ctrl)
+pred_rf <- predict(mrf,test_data)
+confusionMatrix(pred_rf,test_data$classe)
+```
+
+## predict the 20 cases for test
+It can be seen that random forest has higher accuracy, so I am going to use it to predict the 20 cases.
+```{r}
+pred<-predict(mrf,predict_cases)
+write.csv(pred,"E:/03.Yue/coursera/data science/course8/prediction.csv",row.names=FALSE)
+```
